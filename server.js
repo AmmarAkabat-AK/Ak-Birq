@@ -9,13 +9,13 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// بيانات Supabase
+// =================== Supabase ===================
 const supabase = createClient(
   "https://zvzjxrfjrbgybyqcaxbe.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2emp4cmZqcmJneWJ5cWNheGJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMTE2OTIsImV4cCI6MjA5Mjc4NzY5Mn0.SEsZTmft-qWnS8P4nDmHVjZ7ZsUf0xq3fmBtPJIvJZs"
 );
 
-// بيانات MikroTik
+// =================== MikroTik ===================
 const mikrotik = {
   host: "e7e00eb9bd43.sn.mynetname.net",
   user: "admin",
@@ -23,12 +23,47 @@ const mikrotik = {
   port: 8728
 };
 
-// الصفحة الرئيسية
+// =================== Functions ===================
+async function connectMT() {
+  const conn = new RouterOSAPI(mikrotik);
+  await conn.connect();
+  return conn;
+}
+
+async function getCardFromProfile(profile) {
+  const conn = await connectMT();
+
+  try {
+    const users = await conn.write("/ip/hotspot/user/print", [
+      `?profile=${profile}`
+    ]);
+
+    if (!users.length) {
+      await conn.close();
+      return null;
+    }
+
+    const card = users[0];
+
+    await conn.write("/ip/hotspot/user/remove", [
+      `=.id=${card[".id"]}`
+    ]);
+
+    await conn.close();
+
+    return card.name;
+  } catch (e) {
+    await conn.close();
+    throw e;
+  }
+}
+
+// =================== Main ===================
 app.get("/", (req, res) => {
   res.send("API شغال ✅");
 });
 
-// إنشاء مستخدم
+// =================== Create User ===================
 app.post("/api/createUser", async (req, res) => {
   const { name, password } = req.body;
 
@@ -48,7 +83,7 @@ app.post("/api/createUser", async (req, res) => {
   res.json({ success: true, code });
 });
 
-// تسجيل الدخول
+// =================== Login ===================
 app.post("/api/login", async (req, res) => {
   const { code, password } = req.body;
 
@@ -64,18 +99,112 @@ app.post("/api/login", async (req, res) => {
   res.json({ user: data });
 });
 
-// سحب كرت من MikroTik
-app.get("/api/getCard", async (req, res) => {
-  const conn = new RouterOSAPI(mikrotik);
+// =================== User Info ===================
+app.get("/api/user/:code", async (req, res) => {
+  const { code } = req.params;
+
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .eq("code", code)
+    .single();
+
+  if (!data) return res.status(404).json({ error: "غير موجود" });
+
+  res.json(data);
+});
+
+// =================== Add Card / Points ===================
+app.post("/api/addCard", async (req, res) => {
+  const { userCode, cardNumber } = req.body;
+
+  const pointsAdded = 10;
+
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .eq("code", userCode)
+    .single();
+
+  if (!data) return res.json({ error: "المستخدم غير موجود" });
+
+  const newPoints = (data.points || 0) + pointsAdded;
+
+  await supabase
+    .from("users")
+    .update({ points: newPoints })
+    .eq("code", userCode);
+
+  res.json({
+    success: true,
+    pointsAdded,
+    newPoints
+  });
+});
+
+// =================== Reward ===================
+app.post("/api/redeemReward", async (req, res) => {
+  const { userCode, rewardName } = req.body;
+
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .eq("code", userCode)
+    .single();
+
+  if (!data) return res.json({ error: "المستخدم غير موجود" });
+
+  let cost = 50;
+  if (rewardName === "كرت ابو 200") cost = 100;
+  if (rewardName === "كرت VIP") cost = 200;
+
+  if (data.points < cost)
+    return res.json({ error: "نقاطك غير كافية" });
 
   try {
-    await conn.connect();
+    const card = await getCardFromProfile("point-50");
 
-    const data = await conn.write("/ip/hotspot/user/print");
+    if (!card) return res.json({ error: "لا يوجد كروت" });
 
-    await conn.close();
+    await supabase
+      .from("users")
+      .update({ points: data.points - cost })
+      .eq("code", userCode);
 
-    res.json(data[0]);
+    res.json({
+      success: true,
+      username: card
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+// =================== Loan ===================
+app.post("/api/loan", async (req, res) => {
+  const { userCode } = req.body;
+
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .eq("code", userCode)
+    .single();
+
+  if (!data) return res.json({ error: "المستخدم غير موجود" });
+
+  if ((data.points || 0) < 30)
+    return res.json({ error: "تحتاج 30 نقطة" });
+
+  try {
+    const card = await getCardFromProfile("Selefny");
+
+    if (!card) return res.json({ error: "لا يوجد كروت سلفني" });
+
+    res.json({
+      success: true,
+      username: card,
+      loanAmount: 30
+    });
   } catch (e) {
     res.json({ error: e.message });
   }
