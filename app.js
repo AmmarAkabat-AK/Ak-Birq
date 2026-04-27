@@ -1,6 +1,6 @@
 // ===================== إعداد API =====================
 const API =
-  "https://f749d6b8-4668-48f5-b1bd-261fa5cfe622-00-14h7pkl42myql.sisko.replit.dev/api";
+"https://ak-birq.onrender.com/api";
 
 // ===================== تنبيهات =====================
 function showAlert(msg, duration = 3000) {
