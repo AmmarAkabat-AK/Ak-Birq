@@ -209,5 +209,25 @@ app.post("/api/loan", async (req, res) => {
     res.json({ error: e.message });
   }
 });
+// =================== Recover Code ===================
+app.post("/api/recoverCode", async (req, res) => {
+  const { name, password } = req.body;
+
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .eq("name", name)
+    .eq("password", password)
+    .single();
+
+  if (!data) {
+    return res.json({ error: "البيانات غير صحيحة" });
+  }
+
+  res.json({
+    success: true,
+    code: data.code
+  });
+});
 
 app.listen(PORT, () => console.log("Server Started"));
