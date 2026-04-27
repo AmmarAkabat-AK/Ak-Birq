@@ -114,31 +114,66 @@ app.get("/api/user/:code", async (req, res) => {
   res.json(data);
 });
 
-// =================== Add Card / Points ===================
+// =================== Add Card + منع التكرار + خصم السلفة ===================
 app.post("/api/addCard", async (req, res) => {
   const { userCode, cardNumber } = req.body;
 
-  const pointsAdded = 10;
-
-  const { data } = await supabase
+  const { data: user } = await supabase
     .from("users")
     .select("*")
     .eq("code", userCode)
     .single();
 
-  if (!data) return res.json({ error: "المستخدم غير موجود" });
+  if (!user) {
+    return res.json({ error: "المستخدم غير موجود" });
+  }
 
-  const newPoints = (data.points || 0) + pointsAdded;
+  // منع تكرار الكرت
+  const { data: oldCard } = await supabase
+    .from("used_cards")
+    .select("*")
+    .eq("card", cardNumber)
+    .maybeSingle();
 
-  await supabase
-    .from("users")
-    .update({ points: newPoints })
-    .eq("code", userCode);
+  if (oldCard) {
+    return res.json({ error: "هذا الكرت مستخدم من قبل" });
+  }
+
+  let pointsAdded = 10;
+  let newPoints = (user.points || 0) + pointsAdded;
+  let loanRemaining = 0;
+
+  // خصم السلفة تلقائي
+  if (user.loan_remaining && user.loan_remaining > 0) {
+    const debt = user.loan_remaining;
+
+    if (newPoints >= debt) {
+      newPoints -= debt;
+      loanRemaining = 0;
+    } else {
+      loanRemaining = debt - newPoints;
+      newPoints = 0;
+    }
+  }
+
+  await supabase.from("users").update({
+    points: newPoints,
+    loan_remaining: loanRemaining
+  }).eq("code", userCode);
+
+  // حفظ الكرت كمستخدم
+  await supabase.from("used_cards").insert([
+    {
+      card: cardNumber,
+      user_code: userCode
+    }
+  ]);
 
   res.json({
     success: true,
     pointsAdded,
-    newPoints
+    newPoints,
+    loanRemaining
   });
 });
 
