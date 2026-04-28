@@ -7,6 +7,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// إظهار ملفات الموقع
+app.use(express.static(__dirname));
+
+// الصفحة الرئيسية
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/index.html");
+});
+
 const PORT = process.env.PORT || 3000;
 
 // =================== Supabase ===================
@@ -20,7 +28,7 @@ const mikrotik = {
   host: "e7e00eb9bd43.sn.mynetname.net",
   user: "admin",
   password: "71107#660",
-  port: 9728
+  port: 8728
 };
 
 // =================== Functions ===================
