@@ -265,4 +265,23 @@ app.post("/api/recoverCode", async (req, res) => {
   });
 });
 
+// =================== Admin Users ===================
+app.get("/api/admin/users", async (req, res) => {
+  const { data } = await supabase
+    .from("users")
+    .select("*")
+    .order("id", { ascending: false });
+
+  res.json(data || []);
+});
+
+// حذف مستخدم
+app.delete("/api/admin/delete/:id", async (req, res) => {
+  const { id } = req.params;
+
+  await supabase.from("users").delete().eq("id", id);
+
+  res.json({ success: true });
+});
+
 app.listen(PORT, () => console.log("Server Started"));
